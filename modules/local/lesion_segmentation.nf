@@ -9,9 +9,6 @@ process SEGMENTATION_LST_AI {
     label 'process_gpu'
     container 'frheault/sf-lesionflow-lst_ai:1.1.0'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1), path(flair)
 
@@ -19,6 +16,9 @@ process SEGMENTATION_LST_AI {
     tuple val(meta), path("lst_ai.nii.gz")     , emit: binary_mask
     tuple val(meta), path("lst_ai_prob.nii.gz"), emit: probability_map
     path "versions.yml"                        , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -70,9 +70,6 @@ process SEGMENTATION_SAMSEG {
     tag "$meta.id"
     container 'freesurfer/freesurfer:7.4.1'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1_unstripped_mni), path(flair_unstripped_mni), path(fs_license)
 
@@ -80,6 +77,9 @@ process SEGMENTATION_SAMSEG {
     tuple val(meta), path("${meta.id}_samseg_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_samseg_prob.nii.gz")  , emit: probability_map
     path "versions.yml"                                     , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -137,26 +137,27 @@ process SEGMENTATION_SAMSEG {
 process SEGMENTATION_WMH_SYNTHSEG {
     tag "$meta.id"
     label 'process_gpu'
-    container 'frheault/sf-lesionflow-wmh_synthseg:1.0.0'
-
-    when:
-    task.ext.when == null || task.ext.when
+    container "ThoumyreStanislas/wmh-synthseg-minimal:1.0.0"
 
     input:
-    tuple val(meta), path(flair_unstripped_mni)
+    tuple val(meta), path(flair)
 
     output:
     tuple val(meta), path("${meta.id}_wmh-synthseg_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_wmh-synthseg_prob.nii.gz")  , emit: probability_map
     path "versions.yml"                                           , emit: versions
 
+    when:
+    task.ext.when == null || task.ext.when
+
     stub:
     """
     touch ${meta.id}_wmh-synthseg_binary.nii.gz
     touch ${meta.id}_wmh-synthseg_prob.nii.gz
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        wmh_synthseg: 1.0
+        Freesurfer: \$(cat /usr/local/freesurfer/build-stamp.txt | grep -oP '\\d+\\.\\d+\\.\\d+' | head -1)
     END_VERSIONS
     """
 
@@ -170,25 +171,27 @@ process SEGMENTATION_WMH_SYNTHSEG {
     source /usr/local/freesurfer/SetUpFreeSurfer.sh
     set -u
 
+    export PATH=/usr/local/freesurfer/python/bin:\${PATH}
     export HOME="\$(pwd)"
     export TORCH_HOME="\$(pwd)/.cache/torch"
     export MPLCONFIGDIR="\$(pwd)/.cache/matplotlib"
 
-    mri_WMHsynthseg --i ${flair_unstripped_mni} \
+    mri_WMHsynthseg --i ${flair} \
                     --o multiclass.nii.gz \
                     --save_lesion_probabilities \
                     ${device_args}
 
-    fspython "\$(command -v conform_synthseg.py)" --input multiclass.nii.gz --ref ${flair_unstripped_mni} --output ${meta.id}_wmh-synthseg_binary.nii.gz --label_id ${label_id}
-    # mri_WMHsynthseg writes <output stem>.lesion_probs.nii.gz, in its internal
-    # (cropped, 1mm) grid like multiclass.nii.gz -- resample it onto the FLAIR grid
-    # (linear) so it aligns voxel-for-voxel with the binary mask.
-    fspython "\$(command -v conform_synthseg.py)" --input multiclass.lesion_probs.nii.gz --ref ${flair_unstripped_mni} --output ${meta.id}_wmh-synthseg_prob.nii.gz --continuous
+    fspython conform_synthseg.py --input multiclass.nii.gz --ref ${flair} \
+             --output ${meta.id}_wmh-synthseg_binary.nii.gz --label_id ${label_id}
+
+    fspython conform_synthseg.py --input multiclass.lesion_probs.nii.gz \
+             --ref ${flair} --output ${meta.id}_wmh-synthseg_prob.nii.gz --continuous
+
     rm -f multiclass.nii.gz multiclass.lesion_probs.nii.gz
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        wmh_synthseg: 1.0
+        Freesurfer: \$(cat /usr/local/freesurfer/build-stamp.txt | grep -oP '\\d+\\.\\d+\\.\\d+' | head -1)
     END_VERSIONS
     """
 }
@@ -197,9 +200,6 @@ process SEGMENTATION_FAST_OUTLIER {
     tag "$meta.id"
     container 'frheault/sf-lesionflow-fast_outlier:1.0.0'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1_mni), path(flair_mni)
 
@@ -207,6 +207,9 @@ process SEGMENTATION_FAST_OUTLIER {
     tuple val(meta), path("${meta.id}_fast-outlier_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_fast-outlier_zscore.nii.gz"), emit: probability_map
     path "versions.yml"                                          , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -257,9 +260,6 @@ process SEGMENTATION_FLAMES {
     tag "$meta.id"
     container 'frheault/sf-lesionflow-flames:1.0.0'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(flair_mni)
 
@@ -267,6 +267,9 @@ process SEGMENTATION_FLAMES {
     tuple val(meta), path("${meta.id}_flames_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_flames_prob.nii.gz")  , emit: probability_map
     path "versions.yml"                                     , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -324,9 +327,6 @@ process SEGMENTATION_TRUENET {
     label 'process_gpu'
     container 'frheault/sf-lesionflow-truenet:1.0.0'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1), path(flair)
 
@@ -334,6 +334,9 @@ process SEGMENTATION_TRUENET {
     tuple val(meta), path("truenet.nii.gz")     , emit: binary_mask
     tuple val(meta), path("truenet_prob.nii.gz"), emit: probability_map, optional: true
     path "versions.yml"                         , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -384,9 +387,6 @@ process SEGMENTATION_HYPERMAPP3R {
     tag "$meta.id"
     container 'mgoubran/hypermapper:latest'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1_mni), path(flair_mni)
 
@@ -394,6 +394,9 @@ process SEGMENTATION_HYPERMAPP3R {
     tuple val(meta), path("${meta.id}_hypermapp3r_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_hypermapp3r_prob.nii.gz")  , emit: probability_map
     path "versions.yml"                                         , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -462,15 +465,15 @@ process PREPROC_SYNTHSEG {
     label 'process_gpu'
     container 'freesurfer/freesurfer:7.4.1'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(flair)
 
     output:
     tuple val(meta), path("${meta.id}_synthseg.nii.gz"), emit: synthseg
     path "versions.yml"                                , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -505,9 +508,6 @@ process SEGMENTATION_SEGCSVD {
     label 'process_gpu'
     container 'frheault/sf-lesionflow-segcsvd:rc03'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(flair_mni), path(synthseg)
 
@@ -515,6 +515,9 @@ process SEGMENTATION_SEGCSVD {
     tuple val(meta), path("${meta.id}_segcsvd_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_segcsvd_prob.nii.gz")  , emit: probability_map
     path "versions.yml"                                      , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -577,9 +580,6 @@ process SEGMENTATION_EMORY_ROBUST {
     label 'process_gpu'
     container 'emorycn2l/emory_robust_wmh:v1.2'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1_mni), path(flair_mni)
 
@@ -587,6 +587,9 @@ process SEGMENTATION_EMORY_ROBUST {
     tuple val(meta), path("${meta.id}_emory_robust_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_emory_robust_prob.nii.gz")  , emit: probability_map
     path "versions.yml"                                           , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -633,9 +636,6 @@ process SEGMENTATION_MARS_WMH {
     label 'process_gpu'
     container 'ghcr.io/miac-research/wmh-nnunet:1.0.2'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1_unstripped), path(flair_unstripped)
 
@@ -644,6 +644,9 @@ process SEGMENTATION_MARS_WMH {
     tuple val(meta), path("mars_wmh_prob.nii.gz"), emit: probability_map
     tuple val(meta), path("*_QC.html")           , emit: qc_html    , optional: true
     path "versions.yml"                          , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -711,9 +714,6 @@ process SEGMENTATION_BAWIL {
     label 'process_gpu'
     container 'frheault/sf-lesionflow-bawil:1.0.0'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     // 1 mm resampled, non-N4 FLAIR (full FOV) + its SynthStrip brain mask on the same grid
     // (framing box and, with ext.strip, skull removal).
@@ -723,6 +723,9 @@ process SEGMENTATION_BAWIL {
     tuple val(meta), path("bawil.nii.gz")     , emit: binary_mask
     tuple val(meta), path("bawil_prob.nii.gz"), emit: probability_map
     path "versions.yml"                       , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -783,9 +786,6 @@ process SEGMENTATION_MIMOSA {
     tag "$meta.id"
     container 'frheault/sf-lesionflow-mimosa:1.0.0'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(t1_mni), path(flair_mni)
 
@@ -793,6 +793,9 @@ process SEGMENTATION_MIMOSA {
     tuple val(meta), path("${meta.id}_mimosa_binary.nii.gz"), emit: binary_mask
     tuple val(meta), path("${meta.id}_mimosa_prob.nii.gz")  , emit: probability_map
     path "versions.yml"                                     , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """
@@ -835,47 +838,99 @@ process SEGMENTATION_MIMOSA {
 process SEGMENTATION_SHIVAI {
     tag "$meta.id"
     label 'process_gpu'
-    container 'frheault/sf-lesionflow-shivai:1.0.0'
+    container 'stanislasthoumyre/shivai:2.0.0'
+
+    input:
+    tuple val(meta), path(t1_mni), path(flair_mni), path(swi_mni)
+
+    output:
+    tuple val(meta), path("${meta.id}__wmh_mask.nii.gz.nii.gz") , emit: binary_mask
+    tuple val(meta), path("${meta.id}__wmh_map.nii.gz ")        , emit: probability_map
+    path "versions.yml"                                         , emit: versions
 
     when:
     task.ext.when == null || task.ext.when
-
-    input:
-    tuple val(meta), path(t1_mni), path(flair_mni)
-
-    output:
-    tuple val(meta), path("${meta.id}_shivai_binary.nii.gz"), emit: binary_mask
-    tuple val(meta), path("${meta.id}_shivai_prob.nii.gz")  , emit: probability_map
-    path "versions.yml"                                     , emit: versions
 
     stub:
     """
     touch ${meta.id}_shivai_binary.nii.gz
     touch ${meta.id}_shivai_prob.nii.gz
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        shivai: 1.0
+        shivai: \$(shiva --version 2>&1 | grep -oP '(?<=version: )[0-9.]+')
     END_VERSIONS
     """
 
     script:
-    def prob_thresh = task.ext.prob_threshold ?: 0.50
-    def min_cluster = task.ext.min_cluster_size ?: 3
-    def use_gpu = task.ext.gpu
+    def input_type  = task.ext.input_type  ?: 'standard'
+    def brain_seg   = task.ext.brain_seg   ?: 'shiva'
+    def threshold       = task.ext.threshold       != null ? "--threshold ${task.ext.threshold}"             : ''   // default: 0.5
+    def threshold_pvs   = task.ext.threshold_pvs   != null ? "--threshold_pvs ${task.ext.threshold_pvs}"     : ''   // default: 0.5
+    def threshold_wmh   = task.ext.threshold_wmh   != null ? "--threshold_wmh ${task.ext.threshold_wmh}"     : ''   // default: 0.5
+    def threshold_cmb   = task.ext.threshold_cmb   != null ? "--threshold_cmb ${task.ext.threshold_cmb}"     : ''   // default: 0.5
+    def threshold_lac   = task.ext.threshold_lac   != null ? "--threshold_lac ${task.ext.threshold_lac}"     : ''   // default: 0.5
+    def min_pvs_size    = task.ext.min_pvs_size    != null ? "--min_pvs_size ${task.ext.min_pvs_size}"       : ''   // default: 10 vox
+    def min_wmh_size    = task.ext.min_wmh_size    != null ? "--min_wmh_size ${task.ext.min_wmh_size}"       : ''   // default: 10 vox
+    def min_cmb_size    = task.ext.min_cmb_size    != null ? "--min_cmb_size ${task.ext.min_cmb_size}"       : ''   // default: 2 vox
+    def min_lac_size    = task.ext.min_lac_size    != null ? "--min_lac_size ${task.ext.min_lac_size}"       : ''   // default: 50 vox
+    def final_dimensions = task.ext.final_dimensions       ? "--final_dimensions ${task.ext.final_dimensions}" : '' // default: 160 214 176
+    def voxels_size      = task.ext.voxels_size            ? "--voxels_size ${task.ext.voxels_size}"         : ''   // default: 1.0 1.0 1.0
+    def voxels_tolerance = task.ext.voxels_tolerance       ? "--voxels_tolerance ${task.ext.voxels_tolerance}" : '' // default: 0.01 0.01 0.01
     """
-    export CUDA_VISIBLE_DEVICES=${use_gpu ? '0' : '-1'}
-    export MPLCONFIGDIR="\$(pwd)/.cache/matplotlib"
 
-    shivai_predict.py --t1 ${t1_mni} \
-                     --flair ${flair_mni} \
-                     --output ${meta.id}_shivai_binary.nii.gz \
-                     --prob_threshold ${prob_thresh} \
-                     --min_cluster_size ${min_cluster} \
-                     --output_prob ${meta.id}_shivai_prob.nii.gz
+    export PATH="/opt/shivai-venv/bin:/opt/SynthSeg/scripts:/opt/ants-2.4.3/bin:\$PATH"
+
+    mkdir -p shiva_input/${meta.id}/t1
+    cp ${t1_mni} shiva_input/${meta.id}/t1/T1.nii.gz
+
+    if [[ -f "${flair_mni}" ]]; then
+        mkdir -p shiva_input/${meta.id}/flair
+        cp ${flair_mni} shiva_input/${meta.id}/flair/FLAIR.nii.gz
+    fi
+
+    if [[ -f "$swi" ]]; then
+        mkdir -p shiva_input/${meta.id}/swi
+        cp ${swi_mni} shiva_input/${meta.id}/swi/SWI.nii.gz
+    fi
+
+    shiva \
+        --in shiva_input \
+        --out shiva_out \
+        --prediction WMH \
+        --input_type $input_type \
+        --brain_seg $brain_seg \
+        --model /opt/shivai/models \
+        --config /opt/shivai/shiva_config.yaml \
+        --use_cpu \
+        $threshold \
+        $threshold_pvs \
+        $threshold_wmh \
+        $threshold_cmb \
+        $threshold_lac \
+        $min_pvs_size \
+        $min_wmh_size \
+        $min_cmb_size \
+        $min_lac_size \
+        $final_dimensions \
+        $voxels_size \
+        $voxels_tolerance
+
+    find shiva_out/results/segmentations/wmh_segmentation/${meta.id} \\
+        -name "*labelled*wmh*.nii.gz" \\
+        -exec cp {} ${meta.id}__wmh_mask.nii.gz \\; 2>/dev/null || true
+
+    find shiva_out/results/segmentations/wmh_segmentation/${meta.id} \\
+        -name "*wmh*map*.nii.gz" \\
+        -exec cp {} ${meta.id}__wmh_map.nii.gz \\; 2>/dev/null || true
+
+    find shiva_out/results/report/${meta.id} \\
+        -name "*.pdf" \\
+        -exec cp {} ${meta.id}__shivai_report.pdf \\; 2>/dev/null || true
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        shivai: 1.0
+        shivai: \$(shiva --version 2>&1 | grep -oP '(?<=version: )[0-9.]+')
     END_VERSIONS
     """
 }
@@ -885,9 +940,6 @@ process SEGMENTATION_MINDGLIDE {
     label 'process_gpu'
     container 'frheault/sf-lesionflow-mindglide:1.0.0'
 
-    when:
-    task.ext.when == null || task.ext.when
-
     input:
     tuple val(meta), path(flair)
 
@@ -895,6 +947,9 @@ process SEGMENTATION_MINDGLIDE {
     tuple val(meta), path("mindglide.nii.gz")     , emit: binary_mask
     tuple val(meta), path("mindglide_prob.nii.gz"), emit: probability_map
     path "versions.yml"                           , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     stub:
     """

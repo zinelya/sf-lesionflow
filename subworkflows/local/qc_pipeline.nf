@@ -76,8 +76,8 @@ workflow QC_PIPELINE {
         .groupTuple()
         .map { subject, metas ->
             def sorted = metas.unique().sort { a, b ->
-                def na = _session_num(a.session ?: '')
-                def nb = _session_num(b.session ?: '')
+                def na = _session_num.call(a.session ?: '')
+                def nb = _session_num.call(b.session ?: '')
                 na != nb ? na <=> nb : (a.session ?: '') <=> (b.session ?: '')
             }
             [subject, sorted[-1]]
